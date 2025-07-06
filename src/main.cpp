@@ -28,7 +28,6 @@ void producer_func(int trader_id) {
 
         Order order(global_order_id++, std::chrono::system_clock::now().time_since_epoch().count(), side, OrderType::LIMIT, price, qty);
         order_queue.push(order);
-        std::this_thread::sleep_for(std::chrono::milliseconds(100 + trader_id * 10));
     }
 }
 
@@ -38,7 +37,6 @@ void matcher_func() {
         Order incoming = order_queue.pop();
         if (incoming.order_id == -1) break; // Poison pill to exit
         matcher.match_order(incoming, book);
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
 }
 
@@ -61,8 +59,6 @@ int main() {
     for (auto& t : producers) t.join();
 
     // Let matcher catch up
-    std::this_thread::sleep_for(std::chrono::seconds(2));
-
     // Send poison pill to stop matcher
     order_queue.push(Order(-1, 0, Side::BUY, OrderType::LIMIT, 0.0, 0));
     matcher_thread.join();
