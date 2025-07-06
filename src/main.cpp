@@ -1,30 +1,69 @@
+#include <iostream>
+#include <thread>
+#include <vector>
+#include <random>
+#include <chrono>
+#include "order.hpp"
+#include "order_book.hpp"
 #include "matcher.hpp"
-#include "bits/stdc++.h"
+#include "thread_safe_queue.hpp"
+
+OrderBook book;
+Matcher matcher;
+ThreadSafeQueue<Order> order_queue;
+
+std::atomic<int> global_order_id = 1;
+
+// 🧠 Producer: randomly generates orders
+void producer_func(int trader_id) {
+    std::default_random_engine rng(std::random_device{}());
+    std::uniform_int_distribution<int> qty_dist(1, 50);
+    std::uniform_real_distribution<double> price_dist(99.0, 101.0);
+    std::uniform_int_distribution<int> side_dist(0, 1);
+
+    for (int i = 0; i < 10; ++i) {
+        Side side = (side_dist(rng) == 0) ? Side::BUY : Side::SELL;
+        double price = price_dist(rng);
+        int qty = qty_dist(rng);
+
+        Order order(global_order_id++, std::chrono::system_clock::now().time_since_epoch().count(), side, OrderType::LIMIT, price, qty);
+        order_queue.push(order);
+        std::this_thread::sleep_for(std::chrono::milliseconds(100 + trader_id * 10));
+    }
+}
+
+// ⚙️ Consumer: matches orders
+void matcher_func() {
+    while (true) {
+        Order incoming = order_queue.pop();
+        if (incoming.order_id == -1) break; // Poison pill to exit
+        matcher.match_order(incoming, book);
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+}
 
 int main() {
-    // OrderBook book;
-    // Matcher matcher;
+    const int NUM_PRODUCERS = 4;
 
-    // Add existing SELL orders
-    // book.add_order(Order(2, 1002, Side::SELL, OrderType::LIMIT, 100.0, 50));
-    // book.add_order(Order(3, 1003, Side::SELL, OrderType::LIMIT, 100.5, 30));
+    // 🧵 Spawn matcher
+    std::thread matcher_thread(matcher_func);
 
-    // // Incoming BUY order
-    // Order incoming(10, 1010, Side::BUY, OrderType::LIMIT, 100.5, 60);
-    // matcher.match_order(incoming, book);
+    // 🧵 Spawn traders
+    std::vector<std::thread> producers;
+    for (int i = 0; i < NUM_PRODUCERS; ++i) {
+        producers.emplace_back(producer_func, i + 1);
+    }
 
-    OrderBook book;
+    for (auto& t : producers) t.join();
 
-    std::cout << "Adding order 1" << std::endl;
-    book.add_order(Order(1, 101, Side::BUY, OrderType::LIMIT, 100.5, 20));
-    std::cout << "Adding order 2" << std::endl;
-    book.add_order(Order(2, 102, Side::BUY, OrderType::LIMIT, 100.0, 10));
-    std::cout << "Canceling order 2" << std::endl;
-    book.cancel_order(2); // Cancel order 2
-    std::cout << "Modifying order 1" << std::endl;
-    book.modify_order(1, 101.0, 50); // Modify order 1
-    std::cout << "Printing book" << std::endl;
+    // Let matcher catch up
+    std::this_thread::sleep_for(std::chrono::seconds(2));
+
+    // Send poison pill to stop matcher
+    order_queue.push(Order(-1, 0, Side::BUY, OrderType::LIMIT, 0.0, 0));
+    matcher_thread.join();
+
     book.print_top_levels();
-    std::cout << "Done" << std::endl;
+
     return 0;
 }
