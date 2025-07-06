@@ -1,7 +1,12 @@
 #include "matcher.hpp"
 #include <iostream>
+#include <chrono>
+#include <fstream>
+
+std::ofstream latency_log("latency.csv", std::ios::app);
 
 void Matcher::match_order(Order& incoming, OrderBook& book) {
+    auto start = std::chrono::high_resolution_clock::now();
     std::map<double, std::queue<Order>>* opposite_book;
 
     if (incoming.side == Side::BUY) {
@@ -57,4 +62,9 @@ void Matcher::match_order(Order& incoming, OrderBook& book) {
     if (incoming.quantity > 0 && incoming.type == OrderType::LIMIT) {
         book.add_order(incoming);
     }
+
+    auto end = std::chrono::high_resolution_clock::now();
+    auto ns = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
+
+    latency_log << ns << "\n"; // write to CSV
 }

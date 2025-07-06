@@ -43,6 +43,10 @@ void matcher_func() {
 }
 
 int main() {
+    auto t1 = std::chrono::high_resolution_clock::now();
+
+    // Launch producers, matchers, traders
+
     const int NUM_PRODUCERS = 4;
 
     // 🧵 Spawn matcher
@@ -63,7 +67,14 @@ int main() {
     order_queue.push(Order(-1, 0, Side::BUY, OrderType::LIMIT, 0.0, 0));
     matcher_thread.join();
 
+    
     book.print_top_levels();
+
+
+    auto t2 = std::chrono::high_resolution_clock::now();
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count();
+    std::cout << "Total time: " << ms << " ms\n";
+
 
     return 0;
 }
