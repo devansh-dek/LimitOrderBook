@@ -7,6 +7,15 @@
 #include "order_book.hpp"
 #include "matcher.hpp"
 #include "thread_safe_queue.hpp"
+#include "gui.hpp"
+#include <GLFW/glfw3.h> // Include GLFW
+
+// If you use glad for OpenGL loading, also add:
+// #include <glad/glad.h>
+
+#include "imgui.h"
+#include "imgui_impl_glfw.h"
+#include "imgui_impl_opengl3.h"
 
 OrderBook book;
 Matcher matcher;
@@ -21,7 +30,7 @@ void producer_func(int trader_id) {
     std::uniform_real_distribution<double> price_dist(99.0, 101.0);
     std::uniform_int_distribution<int> side_dist(0, 1);
 
-    for (int i = 0; i < 10; ++i) {
+    for (int i = 0; i < 1000000; ++i) {
         Side side = (side_dist(rng) == 0) ? Side::BUY : Side::SELL;
         double price = price_dist(rng);
         int qty = qty_dist(rng);
@@ -41,19 +50,60 @@ void matcher_func() {
 }
 
 int main() {
-    auto t1 = std::chrono::high_resolution_clock::now();
-
-    // Launch producers, matchers, traders
-
-    const int NUM_PRODUCERS = 4;
+    // Initialize ImGui, create a window, and run the GUI loop
+    // This is a minimal ImGui+GLFW+OpenGL3 setup for Linux
+    // (You must have Dear ImGui, GLFW, and OpenGL3 installed and linked)
+    
+    // --- ImGui/GLFW/GL3 init ---
+    if (!glfwInit()) {
+        std::cerr << "Failed to initialize GLFW" << std::endl;
+        return -1;
+    }
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+    GLFWwindow* window = glfwCreateWindow(800, 600, "LOB Dashboard", nullptr, nullptr);
+    if (!window) {
+        std::cerr << "Failed to create GLFW window" << std::endl;
+        glfwTerminate();
+        return -1;
+    }
+    glfwMakeContextCurrent(window);
+    glfwSwapInterval(1); // Enable vsync
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGuiIO& io = ImGui::GetIO(); (void)io;
+    ImGui::StyleColorsDark();
+    ImGui_ImplGlfw_InitForOpenGL(window, true);
+    ImGui_ImplOpenGL3_Init("#version 330");
 
     // 🧵 Spawn matcher
     std::thread matcher_thread(matcher_func);
 
     // 🧵 Spawn traders
+    const int NUM_PRODUCERS = 4;
     std::vector<std::thread> producers;
     for (int i = 0; i < NUM_PRODUCERS; ++i) {
         producers.emplace_back(producer_func, i + 1);
+    }
+
+    // --- Main loop ---
+    while (!glfwWindowShouldClose(window)) {
+        glfwPollEvents();
+        ImGui_ImplOpenGL3_NewFrame();
+        ImGui_ImplGlfw_NewFrame();
+        ImGui::NewFrame();
+
+        run_gui(book); // Draw the order book dashboard
+
+        ImGui::Render();
+        int display_w, display_h;
+        glfwGetFramebufferSize(window, &display_w, &display_h);
+        glViewport(0, 0, display_w, display_h);
+        glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT);
+        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+        glfwSwapBuffers(window);
     }
 
     for (auto& t : producers) t.join();
@@ -63,14 +113,11 @@ int main() {
     order_queue.push(Order(-1, 0, Side::BUY, OrderType::LIMIT, 0.0, 0));
     matcher_thread.join();
 
-    
-    book.print_top_levels();
-
-
-    auto t2 = std::chrono::high_resolution_clock::now();
-    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count();
-    std::cout << "Total time: " << ms << " ms\n";
-
-
+    // --- Cleanup ---
+    ImGui_ImplOpenGL3_Shutdown();
+    ImGui_ImplGlfw_Shutdown();
+    ImGui::DestroyContext();
+    glfwDestroyWindow(window);
+    glfwTerminate();
     return 0;
 }

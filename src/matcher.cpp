@@ -2,11 +2,14 @@
 #include <iostream>
 #include <chrono>
 #include <fstream>
+using namespace std;
+
 
 std::ofstream latency_log("latency.csv", std::ios::app);
 
 void Matcher::match_order(Order& incoming, OrderBook& book) {
     auto start = std::chrono::high_resolution_clock::now();
+    
     std::map<double, std::queue<Order>>* opposite_book;
 
     if (incoming.side == Side::BUY) {

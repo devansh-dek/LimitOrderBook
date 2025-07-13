@@ -1,8 +1,11 @@
 #include "order_book.hpp"
 #include <iostream>
+#include <map>
+#include <queue>
+using namespace std;
 
 void OrderBook::add_order(const Order& order) {
-    std::lock_guard<std::recursive_mutex> lock(book_mutex);
+    lock_guard<recursive_mutex> lock(book_mutex);
     if (order.side == Side::BUY) {
         buy_book[order.price].push(order);
     } else {
@@ -12,7 +15,7 @@ void OrderBook::add_order(const Order& order) {
 }
 
 void OrderBook::cancel_order(int order_id) {
-    std::lock_guard<std::recursive_mutex> lock(book_mutex);
+    lock_guard<recursive_mutex> lock(book_mutex);
     if (order_index.find(order_id) == order_index.end()) return;
 
     auto [price, side] = order_index[order_id];
@@ -24,27 +27,27 @@ void OrderBook::cancel_order(int order_id) {
         book = &sell_book;
     }
 
-    auto& queue = (*book)[price];
-
+    // Work on a copy, then assign back
     std::queue<Order> new_queue;
-    while (!queue.empty()) {
-        Order ord = queue.front(); queue.pop();
-        if (ord.order_id != order_id) {
-            new_queue.push(ord);
+    {
+        std::queue<Order>& orig_queue = (*book)[price];
+        while (!orig_queue.empty()) {
+            Order ord = orig_queue.front(); orig_queue.pop();
+            if (ord.order_id != order_id) {
+                new_queue.push(ord);
+            }
         }
     }
-    queue = std::move(new_queue);
-
-    if (queue.empty()) {
-        book->erase(price);  // ✅ Fix this too
+    if (new_queue.empty()) {
+        book->erase(price);
+    } else {
+        (*book)[price] = std::move(new_queue);
     }
-
     order_index.erase(order_id);
 }
 
-
 void OrderBook::modify_order(int order_id, double new_price, int new_qty) {
-    std::lock_guard<std::recursive_mutex> lock(book_mutex);
+    lock_guard<recursive_mutex> lock(book_mutex);
     if (order_index.find(order_id) == order_index.end()) return;
 
     auto [old_price, side] = order_index[order_id];
@@ -54,33 +57,30 @@ void OrderBook::modify_order(int order_id, double new_price, int new_qty) {
     } else {
         book = &sell_book;
     }
-    auto& queue = (*book)[old_price];
 
     std::queue<Order> new_queue;
-
-    Order modified_order(0, 0, side, OrderType::LIMIT, 0.0, 0); // use correct side
+    Order modified_order(0, 0, side, OrderType::LIMIT, 0.0, 0);
     bool found = false;
-
-    while (!queue.empty()) {
-        Order ord = queue.front(); queue.pop();
-        if (ord.order_id == order_id) {
-            ord.price = new_price;
-            ord.quantity = new_qty;
-            modified_order = ord;
-            found = true;
-        } else {
-            new_queue.push(ord);
+    {
+        std::queue<Order>& orig_queue = (*book)[old_price];
+        while (!orig_queue.empty()) {
+            Order ord = orig_queue.front(); orig_queue.pop();
+            if (ord.order_id == order_id) {
+                ord.price = new_price;
+                ord.quantity = new_qty;
+                modified_order = ord;
+                found = true;
+            } else {
+                new_queue.push(ord);
+            }
         }
     }
-
-    queue = std::move(new_queue);
-
-    if (queue.empty()) {
+    if (new_queue.empty()) {
         book->erase(old_price);
+    } else {
+        (*book)[old_price] = std::move(new_queue);
     }
-
     order_index.erase(order_id);
-
     if (found) {
         add_order(modified_order);
     }
@@ -88,23 +88,23 @@ void OrderBook::modify_order(int order_id, double new_price, int new_qty) {
 
 
 void OrderBook::print_top_levels(int depth) {
-    std::lock_guard<std::recursive_mutex> lock(book_mutex);
+    lock_guard<recursive_mutex> lock(book_mutex);
 
-    std::cout << "=== ORDER BOOK ===" << std::endl;
-    std::cout << "SELL SIDE:" << std::endl;
+    cout << "=== ORDER BOOK ===" << endl;
+    cout << "SELL SIDE:" << endl;
 
     int count = 0;
     for (const auto& [price, queue] : sell_book) {
-        std::cout << "Price: " << price << " | Orders: " << queue.size() << std::endl;
+        cout << "Price: " << price << " | Orders: " << queue.size() << endl;
         if (++count >= depth) break;
     }
 
-    std::cout << "BUY SIDE:" << std::endl;
+    cout << "BUY SIDE:" << endl;
     count = 0;
     for (const auto& [price, queue] : buy_book) {
-        std::cout << "Price: " << price << " | Orders: " << queue.size() << std::endl;
+        cout << "Price: " << price << " | Orders: " << queue.size() << endl;
         if (++count >= depth) break;
     }
 
-    std::cout << "==================" << std::endl;
+    cout << "==================" << endl;
 }
