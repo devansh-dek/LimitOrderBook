@@ -22,6 +22,7 @@ Matcher matcher;
 ThreadSafeQueue<Order> order_queue;
 
 std::atomic<int> global_order_id = 1;
+std::atomic<bool> matcher_done = false; // Flag to indicate matcher thread exit
 
 // 🧠 Producer: randomly generates orders
 void producer_func(int trader_id) {
@@ -30,7 +31,7 @@ void producer_func(int trader_id) {
     std::uniform_real_distribution<double> price_dist(99.0, 101.0);
     std::uniform_int_distribution<int> side_dist(0, 1);
 
-    for (int i = 0; i < 1000000; ++i) {
+    for (int i = 0; i < 1000; ++i) {
         Side side = (side_dist(rng) == 0) ? Side::BUY : Side::SELL;
         double price = price_dist(rng);
         int qty = qty_dist(rng);
@@ -47,6 +48,7 @@ void matcher_func() {
         if (incoming.order_id == -1) break; // Poison pill to exit
         matcher.match_order(incoming, book);
     }
+    matcher_done = true; // Signal done
 }
 
 int main() {
@@ -88,6 +90,7 @@ int main() {
     }
 
     // --- Main loop ---
+    bool matcher_crashed = false;
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
         ImGui_ImplOpenGL3_NewFrame();
@@ -95,6 +98,19 @@ int main() {
         ImGui::NewFrame();
 
         run_gui(book); // Draw the order book dashboard
+
+        // Detect matcher thread exit (done or crash)
+        if (!matcher_crashed && matcher_done.load()) {
+            matcher_crashed = true;
+            ImGui::OpenPopup("Matcher Error");
+        }
+        if (ImGui::BeginPopupModal("Matcher Error", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+            ImGui::Text("Matcher thread exited (completed, crashed, or received poison pill).\nThe GUI will remain open for inspection.");
+            if (ImGui::Button("Close GUI")) {
+                glfwSetWindowShouldClose(window, 1);
+            }
+            ImGui::EndPopup();
+        }
 
         ImGui::Render();
         int display_w, display_h;
@@ -109,8 +125,10 @@ int main() {
     for (auto& t : producers) t.join();
 
     // Let matcher catch up
-    // Send poison pill to stop matcher
-    order_queue.push(Order(-1, 0, Side::BUY, OrderType::LIMIT, 0.0, 0));
+    // Send poison pill to stop matcher if not already done
+    if (!matcher_done.load()) {
+        order_queue.push(Order(-1, 0, Side::BUY, OrderType::LIMIT, 0.0, 0));
+    }
     matcher_thread.join();
 
     // --- Cleanup ---
