@@ -20,6 +20,7 @@
 OrderBook book;
 Matcher matcher;
 ThreadSafeQueue<Order> order_queue;
+std::mutex book_mutex; // Mutex to protect OrderBook
 
 std::atomic<int> global_order_id = 1;
 std::atomic<bool> matcher_done = false; // Flag to indicate matcher thread exit
@@ -31,7 +32,7 @@ void producer_func(int trader_id) {
     std::uniform_real_distribution<double> price_dist(99.0, 101.0);
     std::uniform_int_distribution<int> side_dist(0, 1);
 
-    for (int i = 0; i < 1000; ++i) {
+    for (int i = 0; i < 100000; ++i) {
         Side side = (side_dist(rng) == 0) ? Side::BUY : Side::SELL;
         double price = price_dist(rng);
         int qty = qty_dist(rng);
@@ -46,7 +47,10 @@ void matcher_func() {
     while (true) {
         Order incoming = order_queue.pop();
         if (incoming.order_id == -1) break; // Poison pill to exit
-        matcher.match_order(incoming, book);
+        {
+            std::lock_guard<std::mutex> lock(book_mutex);
+            matcher.match_order(incoming, book);
+        }
     }
     matcher_done = true; // Signal done
 }
@@ -97,7 +101,11 @@ int main() {
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
 
-        run_gui(book); // Draw the order book dashboard
+        // Lock book for GUI rendering
+        {
+            std::lock_guard<std::mutex> lock(book_mutex);
+            run_gui(book); // Draw the order book dashboard
+        }
 
         // Detect matcher thread exit (done or crash)
         if (!matcher_crashed && matcher_done.load()) {
@@ -124,11 +132,8 @@ int main() {
 
     for (auto& t : producers) t.join();
 
-    // Let matcher catch up
-    // Send poison pill to stop matcher if not already done
-    if (!matcher_done.load()) {
-        order_queue.push(Order(-1, 0, Side::BUY, OrderType::LIMIT, 0.0, 0));
-    }
+    // Send poison pill to stop matcher (after all producers are done)
+    order_queue.push(Order(-1, 0, Side::BUY, OrderType::LIMIT, 0.0, 0));
     matcher_thread.join();
 
     // --- Cleanup ---
