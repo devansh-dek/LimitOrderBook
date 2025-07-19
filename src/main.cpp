@@ -16,6 +16,7 @@
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
+#include "latency_metrics.hpp"
 
 OrderBook book;
 Matcher matcher;
@@ -24,6 +25,8 @@ std::mutex book_mutex; // Mutex to protect OrderBook
 
 std::atomic<int> global_order_id = 1;
 std::atomic<bool> matcher_done = false; // Flag to indicate matcher thread exit
+
+LatencyMetrics queue_push_latency(500), queue_pop_latency(500), match_latency(500), gui_frame_latency(500);
 
 // 🧠 Producer: randomly generates orders
 void producer_func(int trader_id) {
@@ -38,18 +41,30 @@ void producer_func(int trader_id) {
         int qty = qty_dist(rng);
 
         Order order(global_order_id++, std::chrono::system_clock::now().time_since_epoch().count(), side, OrderType::LIMIT, price, qty);
+        auto t0 = std::chrono::high_resolution_clock::now();
         order_queue.push(order);
+        auto t1 = std::chrono::high_resolution_clock::now();
+        double micros = std::chrono::duration<double, std::micro>(t1 - t0).count();
+        queue_push_latency.add(micros);
     }
 }
 
 // ⚙️ Consumer: matches orders
 void matcher_func() {
     while (true) {
+        auto t0 = std::chrono::high_resolution_clock::now();
         Order incoming = order_queue.pop();
+        auto t1 = std::chrono::high_resolution_clock::now();
+        double pop_micros = std::chrono::duration<double, std::micro>(t1 - t0).count();
+        queue_pop_latency.add(pop_micros);
         if (incoming.order_id == -1) break; // Poison pill to exit
         {
+            auto t2 = std::chrono::high_resolution_clock::now();
             std::lock_guard<std::mutex> lock(book_mutex);
             matcher.match_order(incoming, book);
+            auto t3 = std::chrono::high_resolution_clock::now();
+            double match_micros = std::chrono::duration<double, std::micro>(t3 - t2).count();
+            match_latency.add(match_micros);
         }
     }
     matcher_done = true; // Signal done
@@ -96,6 +111,7 @@ int main() {
     // --- Main loop ---
     bool matcher_crashed = false;
     while (!glfwWindowShouldClose(window)) {
+        auto gui_t0 = std::chrono::high_resolution_clock::now();
         glfwPollEvents();
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
@@ -128,6 +144,9 @@ int main() {
         glClear(GL_COLOR_BUFFER_BIT);
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
         glfwSwapBuffers(window);
+        auto gui_t1 = std::chrono::high_resolution_clock::now();
+        double gui_micros = std::chrono::duration<double, std::micro>(gui_t1 - gui_t0).count();
+        gui_frame_latency.add(gui_micros);
     }
 
     for (auto& t : producers) t.join();

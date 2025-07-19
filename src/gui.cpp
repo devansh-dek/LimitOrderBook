@@ -1,7 +1,10 @@
 #include "gui.hpp"
+#include "latency_metrics.hpp"
 #include <imgui.h>
 #include <vector>
 #include <algorithm>
+
+extern LatencyMetrics queue_push_latency, queue_pop_latency, match_latency, gui_frame_latency;
 
 void run_gui(OrderBook& book) {
     // Make the window take up the entire viewport
@@ -10,6 +13,37 @@ void run_gui(OrderBook& book) {
     ImGui::Begin("Limit Order Book Dashboard", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar);
     ImGui::Text("Live Bid/Ask Depth");
     ImGui::Separator();
+
+    // Optionally, use a child window for metrics for better contrast
+    ImGui::BeginChild("MetricsChild", ImVec2(0, 250), true, ImGuiWindowFlags_NoMove);
+    ImGui::Text("Performance Metrics (microseconds)");
+    ImGui::Columns(2, nullptr, false);
+    ImGui::Text("Queue Push"); ImGui::NextColumn();
+    ImGui::Text("Avg: %.2f, Min: %.2f, Max: %.2f", queue_push_latency.avg(), queue_push_latency.min(), queue_push_latency.max()); ImGui::NextColumn();
+    ImGui::Text("Queue Pop"); ImGui::NextColumn();
+    ImGui::Text("Avg: %.2f, Min: %.2f, Max: %.2f", queue_pop_latency.avg(), queue_pop_latency.min(), queue_pop_latency.max()); ImGui::NextColumn();
+    ImGui::Text("Order Match"); ImGui::NextColumn();
+    ImGui::Text("Avg: %.2f, Min: %.2f, Max: %.2f", match_latency.avg(), match_latency.min(), match_latency.max()); ImGui::NextColumn();
+    ImGui::Text("GUI Frame"); ImGui::NextColumn();
+    ImGui::Text("Avg: %.2f, Min: %.2f, Max: %.2f", gui_frame_latency.avg(), gui_frame_latency.min(), gui_frame_latency.max()); ImGui::NextColumn();
+    ImGui::Columns(1);
+    ImGui::Spacing();
+    // Plot latency history
+    auto plot = [](const char* label, LatencyMetrics& m) {
+        auto samples = m.get_samples();
+        if (!samples.empty()) {
+            std::vector<float> float_samples(samples.begin(), samples.end());
+            float max_val = *std::max_element(float_samples.begin(), float_samples.end());
+            ImGui::PlotLines(label, float_samples.data(), float_samples.size(), 0, nullptr, 0.0f, max_val, ImVec2(0, 60));
+        }
+    };
+    plot("Queue Push Latency", queue_push_latency);
+    plot("Queue Pop Latency", queue_pop_latency);
+    plot("Order Match Latency", match_latency);
+    plot("GUI Frame Latency", gui_frame_latency);
+    ImGui::Separator();
+    ImGui::Spacing();
+    ImGui::EndChild(); // Correctly close the metrics child window
 
     // Use child windows for better layout
     float mid = ImGui::GetContentRegionAvail().x * 0.5f;
@@ -60,5 +94,6 @@ void run_gui(OrderBook& book) {
     ImGui::Columns(1);
     ImGui::EndChild();
     ImGui::Columns(1);
+
     ImGui::End();
 }
