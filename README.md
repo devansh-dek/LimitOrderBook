@@ -1,7 +1,7 @@
 # Limit Order Book (LOB) Dashboard
 
 ## Overview
-The **Limit Order Book (LOB) Dashboard** is a high-performance, multithreaded simulation of a financial exchange's order book. It features real-time order matching, latency benchmarking, and a modern GUI built with Dear ImGui.
+The **Limit Order Book (LOB) Dashboard** is a high-performance, multithreaded simulation of a financial exchange's order book. It features real-time order matching, latency benchmarking, and a modern GUI built with Dear ImGui. This project is designed to showcase expertise in systems programming, multithreading, and financial systems, making it highly relevant for roles in high-frequency trading (HFT) and quantitative finance.
 
 ## Key Features
 
@@ -88,12 +88,5 @@ This project demonstrates:
 - **Concurrency and multithreading:** Efficient handling of high-frequency order flow.
 - **Financial domain knowledge:** Understanding of order books and matching algorithms.
 - **Modern C++ expertise:** Clean, modular, and extensible codebase.
-
-## Contact
-For inquiries or collaboration, please reach out to:
-- **Email:** devanshkhandelwal@example.com
-- **LinkedIn:** [Devansh Khandelwal](https://linkedin.com/in/devanshkhandelwal)
-
 ---
 
-**Note:** This project is for educational and demonstration purposes only. It is not intended for production use in live trading environments.

@@ -74,7 +74,7 @@ int main() {
     // Initialize ImGui, create a window, and run the GUI loop
     // This is a minimal ImGui+GLFW+OpenGL3 setup for Linux
     // (You must have Dear ImGui, GLFW, and OpenGL3 installed and linked)
-    
+
     // --- ImGui/GLFW/GL3 init ---
     if (!glfwInit()) {
         std::cerr << "Failed to initialize GLFW" << std::endl;
