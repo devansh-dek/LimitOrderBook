@@ -1,5 +1,6 @@
 #include "gui.hpp"
 #include "latency_metrics.hpp"
+#include "thread_safe_queue.hpp"
 #include <imgui.h>
 #include <vector>
 #include <algorithm>
@@ -7,10 +8,47 @@
 extern LatencyMetrics queue_push_latency, queue_pop_latency, match_latency, gui_frame_latency;
 
 void run_gui(OrderBook& book) {
+
     // Make the window take up the entire viewport
     ImGui::SetNextWindowPos(ImVec2(0, 0));
     ImGui::SetNextWindowSize(ImGui::GetIO().DisplaySize);
     ImGui::Begin("Limit Order Book Dashboard", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar);
+
+    // --- Order Entry Form ---
+    static int order_type = 0; // 0=Limit, 1=Market, 2=Stop, 3=Stop-Limit
+    static int side = 0;       // 0=Buy, 1=Sell
+    static float price = 100.0f;
+    static float stop_price = 100.0f;
+    static int quantity = 1;
+    static int next_order_id = 1000;
+    static char* order_types[] = { (char*)"Limit", (char*)"Market", (char*)"Stop", (char*)"Stop-Limit" };
+    static char* sides[] = { (char*)"Buy", (char*)"Sell" };
+
+    ImGui::BeginChild("OrderEntry", ImVec2(0, 110), true);
+    ImGui::Text("Order Entry");
+    ImGui::Combo("Order Type", &order_type, order_types, 4);
+    ImGui::Combo("Side", &side, sides, 2);
+    if (order_type == 0 || order_type == 3) // Limit or Stop-Limit
+        ImGui::InputFloat("Price", &price, 0.1f, 1.0f, "%.2f");
+    if (order_type == 2 || order_type == 3) // Stop or Stop-Limit
+        ImGui::InputFloat("Stop Price", &stop_price, 0.1f, 1.0f, "%.2f");
+    ImGui::InputInt("Quantity", &quantity);
+    if (ImGui::Button("Submit Order")) {
+        // Create and submit the order
+        Side s = side == 0 ? Side::BUY : Side::SELL;
+        OrderType t = OrderType::LIMIT;
+        if (order_type == 0) t = OrderType::LIMIT;
+        if (order_type == 1) t = OrderType::MARKET;
+        if (order_type == 2) t = OrderType::STOP;
+        if (order_type == 3) t = OrderType::STOP_LIMIT;
+        Order o = (t == OrderType::STOP || t == OrderType::STOP_LIMIT)
+            ? Order(next_order_id++, ImGui::GetTime(), s, t, price, quantity, stop_price)
+            : Order(next_order_id++, ImGui::GetTime(), s, t, price, quantity);
+        extern ThreadSafeQueue<Order> order_queue;
+        order_queue.push(o);
+    }
+    ImGui::EndChild();
+
     ImGui::Text("Live Bid/Ask Depth");
     ImGui::Separator();
 
@@ -94,6 +132,22 @@ void run_gui(OrderBook& book) {
     ImGui::Columns(1);
     ImGui::EndChild();
     ImGui::Columns(1);
+
+    // --- Pending Stop/Stop-Limit Orders ---
+    ImGui::Separator();
+    ImGui::Text("Pending Stop/Stop-Limit Orders:");
+    ImGui::BeginChild("PendingStops", ImVec2(0, 80), true);
+    for (const auto& o : book.stop_orders) {
+        ImGui::Text("ID: %d | %s %s | Qty: %d | Stop: %.2f | Limit: %.2f | Triggered: %s",
+            o.order_id,
+            o.side == Side::BUY ? "Buy" : "Sell",
+            o.type == OrderType::STOP ? "Stop" : "Stop-Limit",
+            o.quantity,
+            o.stop_price,
+            o.type == OrderType::STOP_LIMIT ? o.price : 0.0,
+            o.triggered ? "Yes" : "No");
+    }
+    ImGui::EndChild();
 
     ImGui::End();
 }

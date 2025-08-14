@@ -2,6 +2,7 @@
 #include <iostream>
 #include <map>
 #include <queue>
+#include <algorithm> // For std::remove_if
 using namespace std;
 
 // Add an order to the book. Handles LIMIT, MARKET, STOP, and STOP_LIMIT orders.

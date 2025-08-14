@@ -35,10 +35,13 @@ void producer_func(int trader_id) {
     std::uniform_real_distribution<double> price_dist(99.0, 101.0);
     std::uniform_int_distribution<int> side_dist(0, 1);
 
-    for (int i = 0; i < 100000; ++i) {
-        Side side = (side_dist(rng) == 0) ? Side::BUY : Side::SELL;
-        double price = price_dist(rng);
-        int qty = qty_dist(rng);
+    for (int i = 0; i < 10; ++i) {
+        // Side side = (side_dist(rng) == 0) ? Side::BUY : Side::SELL;
+        // double price = price_dist(rng);
+        // int qty = qty_dist(rng);
+        Side side = Side::BUY;
+        double price = 100;
+        int qty = 1;
 
         Order order(global_order_id++, std::chrono::system_clock::now().time_since_epoch().count(), side, OrderType::LIMIT, price, qty);
         auto t0 = std::chrono::high_resolution_clock::now();
